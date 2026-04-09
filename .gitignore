@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Runtime artifacts
+runtime/
+.env
+
+# Flutter/Dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.pub-cache/
+
+# IDE
+.vscode/
+.idea/

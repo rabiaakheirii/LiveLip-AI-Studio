@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LiveLipSync EventMessage",
+  "type": "object",
+  "required": ["event_type", "timestamp", "data"],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "pipeline_state",
+        "transcript_partial",
+        "transcript_final",
+        "ai_response_partial",
+        "ai_response_final",
+        "obs_status",
+        "pipeline_timing",
+        "log",
+        "error"
+      ]
+    },
+    "timestamp": {"type": "string", "format": "date-time"},
+    "trace_id": {"type": ["string", "null"]},
+    "data": {"type": "object"}
+  }
+}
