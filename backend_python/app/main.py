@@ -3,9 +3,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_diagnostics import router as diagnostics_router
+from app.api.routes_performance import router as performance_router
 from app.api.routes_pipeline import router as pipeline_router
 from app.api.routes_preview import router as preview_router
 from app.api.routes_settings import router as settings_router
@@ -29,12 +31,17 @@ def create_app() -> FastAPI:
     app.state.event_bus = event_bus
     app.state.orchestrator = orchestrator
 
+    if settings.allow_cors_origins:
+        origins = [o.strip() for o in settings.allow_cors_origins.split(",") if o.strip()]
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
     app.include_router(pipeline_router)
     app.include_router(settings_router)
     app.include_router(preview_router)
     app.include_router(webcam_router)
     app.include_router(stream_router)
     app.include_router(diagnostics_router)
+    app.include_router(performance_router)
     app.mount("/preview", StaticFiles(directory=orchestrator.preview_dir), name="preview")
 
     @app.middleware("http")

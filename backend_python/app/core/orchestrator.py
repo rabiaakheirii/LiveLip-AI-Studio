@@ -21,10 +21,12 @@ from app.models.webcam import CameraDevice, PreviewChunk
 from app.services.lipsync_service import LipSyncService
 from app.services.obs_service import OBSService
 from app.services.ollama_service import OllamaService
+from app.services.remote_worker_client import RemoteWorkerClient
 from app.services.render_queue_service import RenderQueueService
 from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.webcam_service import WebcamService
+from app.workers.worker_modes import resolve_worker_mode
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,12 @@ class PipelineOrchestrator:
         self.ollama_service = OllamaService(settings.ollama_base_url, settings.ollama_model)
         self.tts_service = TTSService(str(self._paths.audio), settings.tts_voice)
         self.webcam_service = WebcamService(self._paths.frames, max_devices=settings.webcam_max_devices)
-        self.lipsync_service = LipSyncService(self._paths.preview, engine_name=settings.lipsync_engine, experimental_enabled=settings.enable_experimental_engines)
+        self.lipsync_service = LipSyncService(
+            self._paths.preview,
+            engine_name=settings.lipsync_engine,
+            experimental_enabled=settings.enable_experimental_engines,
+            model_assets_dir=settings.lipsync_model_assets_dir,
+        )
         self.render_queue = RenderQueueService(max_history=25)
         self.obs_service = OBSService(
             host=settings.obs_host,
@@ -77,6 +84,9 @@ class PipelineOrchestrator:
             audio_source=settings.obs_audio_source,
             video_source=settings.obs_video_source,
         )
+        self.remote_worker = RemoteWorkerClient(settings.remote_worker_base_url)
+        self.worker_mode_status = resolve_worker_mode(settings.worker_mode, settings.remote_worker_base_url)
+
         self.stream_pipeline = StreamPipeline(
             webcam_service=self.webcam_service,
             lipsync_service=self.lipsync_service,
@@ -87,6 +97,8 @@ class PipelineOrchestrator:
             frame_queue_size=settings.stream_frame_queue_size,
             audio_queue_size=settings.stream_audio_queue_size,
             obs_video_mode=settings.obs_video_mode,
+            frame_skip_policy=settings.frame_skip_policy,
+            adaptive_degraded_mode=settings.adaptive_degraded_mode,
         )
 
     @property
@@ -120,6 +132,9 @@ class PipelineOrchestrator:
     def stream_status(self) -> StreamMetrics:
         return self.stream_pipeline.status()
 
+    def performance_metrics(self):
+        return self.stream_pipeline.performance_metrics()
+
     def stream_latest_frame(self) -> bytes | None:
         return self.stream_pipeline.latest_frame()
 
@@ -140,12 +155,15 @@ class PipelineOrchestrator:
 
     async def get_diagnostics_summary(self) -> DiagnosticsSummary:
         cams = self.list_cameras()
+        remote_health = await self.remote_worker.health() if self.worker_mode_status.mode == "remote" else {"available": False}
+        stream = self.stream_pipeline.status()
         return DiagnosticsSummary(
             app_name=self.settings.app_name,
             environment=self.settings.environment,
             log_level=self.settings.log_level,
             stream_running=self.stream_pipeline.running,
-            stream_message=self.stream_pipeline.status().message,
+            stream_message=stream.message,
+            worker_mode=self.worker_mode_status.mode,
             capability=CapabilityStatus(
                 webcam_available=any(c.available for c in cams),
                 ffmpeg_available=shutil.which("ffmpeg") is not None,
@@ -153,6 +171,8 @@ class PipelineOrchestrator:
                 obs_reachable=self._obs_reachable(),
                 selected_lipsync_engine=self.lipsync_service.engine_name,
                 degraded_mode=self.lipsync_service.degraded_mode,
+                engine_capabilities=self.lipsync_service.capabilities(),
+                remote_worker_available=remote_health.get("available", False),
             ),
         )
 
@@ -214,10 +234,12 @@ class PipelineOrchestrator:
 
             await self._transition(PipelineState.transcribing)
             final_text = ""
+            stt_start = time.perf_counter()
             async for chunk in self.stt_service.stream_transcripts():
                 await self._emit(EventType.transcript_final if chunk.is_final else EventType.transcript_partial, {"text": chunk.text})
                 if chunk.is_final:
                     final_text = chunk.text
+            self._timings["stt_seconds"] = round(time.perf_counter() - stt_start, 3)
 
             await self._transition(PipelineState.thinking)
             reply = []
@@ -230,7 +252,9 @@ class PipelineOrchestrator:
             await self._emit(EventType.ai_response_final, {"text": full_reply})
 
             await self._transition(PipelineState.speaking)
+            tts_start = time.perf_counter()
             wav_path = await self.tts_service.synthesize_to_wav(full_reply)
+            self._timings["tts_seconds"] = round(time.perf_counter() - tts_start, 3)
 
             await self._transition(PipelineState.camera_ready)
             frame_path = self.webcam_service.capture_frame()

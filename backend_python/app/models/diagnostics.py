@@ -10,6 +10,8 @@ class CapabilityStatus(BaseModel):
     obs_reachable: bool
     selected_lipsync_engine: str
     degraded_mode: bool
+    engine_capabilities: dict[str, bool]
+    remote_worker_available: bool
 
 
 class DiagnosticsSummary(BaseModel):
@@ -17,5 +19,6 @@ class DiagnosticsSummary(BaseModel):
     environment: str
     log_level: str
     stream_running: bool
+    worker_mode: str
     capability: CapabilityStatus
     stream_message: str

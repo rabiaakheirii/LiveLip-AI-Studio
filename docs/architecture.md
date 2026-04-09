@@ -1,20 +1,14 @@
-# Architecture (Phase 4)
+# Architecture (Phase 5)
 
-## Reliability and lifecycle
-- Structured startup/shutdown via `AppLifecycle`.
-- Worker cancellation and timeout-aware stop in `WorkerManager`.
-- Retry helper + error boundaries around stream worker loops.
+## Performance
+- Added `PerformanceTracker` for fps, dropped-frame, queue pressure, and per-stage timing.
+- Stream pipeline records stage timings for capture, lipsync, encode, OBS output.
 
-## Observability
-- Configurable structured logging.
-- Diagnostics APIs for capabilities and stream state.
-- Stream metrics (queue pressure, dropped frames, AV drift).
+## Security
+- Optional API token guard for control routes.
+- Optional CORS allowlist.
+- Safe path utility for preview path boundary checks.
 
-## Stream pipeline
-- capture -> audio -> inference -> publisher worker loops.
-- bounded queues with old-frame drop behavior.
-- fallback to degraded mode when lipsync engine fails.
-
-## Compatibility
-- Existing Phase 1/2/3 routes and event model preserved.
-- New diagnostics and metrics routes are additive.
+## Deployment and workers
+- Worker mode abstraction: `local`, `subprocess` (placeholder), `remote` (health probe + guarded behavior).
+- Remote worker client and mode resolver integrated into diagnostics.

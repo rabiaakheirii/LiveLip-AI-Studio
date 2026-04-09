@@ -19,9 +19,11 @@ class DiagnosticsPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Diagnostics', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Worker mode: ${s.workerMode} | Remote worker: ${s.remoteWorkerAvailable}'),
             Text('Webcam: ${s.webcamAvailable} | FFmpeg: ${s.ffmpegAvailable}'),
             Text('Ollama: ${s.ollamaReachable} | OBS: ${s.obsReachable}'),
             Text('Engine: ${s.selectedLipsyncEngine} | Degraded: ${s.degradedMode}'),
+            Text('Engine capabilities: ${s.engineCapabilities}'),
             Text('Stream message: ${s.streamMessage}'),
           ],
         ),

@@ -12,6 +12,7 @@ from app.core.audio_queue import AudioPacket, AudioQueue
 from app.core.av_sync import AVSyncEstimator
 from app.core.error_handling import boundary
 from app.core.frame_queue import FramePacket, FrameQueue
+from app.core.performance import PerformanceTracker
 from app.core.retry import with_retry
 from app.core.worker_manager import WorkerManager
 from app.models.stream_metrics import StreamMetrics
@@ -36,6 +37,8 @@ class StreamPipeline:
         frame_queue_size: int = 12,
         audio_queue_size: int = 12,
         obs_video_mode: str = "media_source_refresh",
+        frame_skip_policy: str = "drop_oldest",
+        adaptive_degraded_mode: bool = True,
     ) -> None:
         self.webcam_service = webcam_service
         self.lipsync_service = lipsync_service
@@ -44,11 +47,14 @@ class StreamPipeline:
         self.output_dir = output_dir
         self.target_fps = max(1, target_fps)
         self.obs_video_mode = obs_video_mode
+        self.frame_skip_policy = frame_skip_policy
+        self.adaptive_degraded_mode = adaptive_degraded_mode
 
         self.frame_queue = FrameQueue(frame_queue_size)
         self.audio_queue = AudioQueue(audio_queue_size)
         self.sync = AVSyncEstimator()
         self.workers = WorkerManager()
+        self.performance = PerformanceTracker()
 
         self._running = False
         self._latest_frame: bytes | None = None
@@ -67,12 +73,18 @@ class StreamPipeline:
         self.metrics.capture_queue_size = self.frame_queue.qsize()
         self.metrics.audio_queue_size = self.audio_queue.qsize()
         self.metrics.dropped_frames = self.frame_queue.dropped_frames
-        self.metrics.queue_pressure = min(1.0, self.frame_queue.qsize() / max(1, self.frame_queue.maxsize))
+        pressure = min(1.0, self.frame_queue.qsize() / max(1, self.frame_queue.maxsize))
+        self.metrics.queue_pressure = pressure
+        self.performance.update_pressure(pressure)
+        self.performance.on_frame_dropped(self.frame_queue.dropped_frames)
         self.metrics.av_drift_ms = self.sync.drift_ms()
         self.metrics.running = self.running
         self.metrics.degraded_mode = self.lipsync_service.degraded_mode
         self.metrics.updated_at = datetime.utcnow()
         return self.metrics
+
+    def performance_metrics(self):
+        return self.performance.metrics
 
     async def start(self) -> None:
         if self.running:
@@ -100,10 +112,11 @@ class StreamPipeline:
         while self._running:
             start = time.perf_counter()
             async with boundary("capture_loop"):
-                self._latest_seq += 1
-                frame = FramePacket(seq_id=self._latest_seq, ts=datetime.utcnow(), jpeg_bytes=self.webcam_service.capture_frame_bytes())
-                await self.frame_queue.put(frame)
-                self.sync.on_frame(frame.ts)
+                with self.performance.time_stage("capture_ms"):
+                    self._latest_seq += 1
+                    frame = FramePacket(seq_id=self._latest_seq, ts=datetime.utcnow(), jpeg_bytes=self.webcam_service.capture_frame_bytes())
+                    await self.frame_queue.put(frame)
+                    self.sync.on_frame(frame.ts)
                 if self.frame_queue.dropped_frames > 0:
                     await self.event_cb("frame_dropped", {"count": self.frame_queue.dropped_frames})
                 await self.event_cb("queue_pressure", {"pressure": round(self.status().queue_pressure, 3)})
@@ -126,25 +139,32 @@ class StreamPipeline:
             audio_bytes = audio_packet.wav_bytes if audio_packet else None
 
             async def _run():
-                return await self.lipsync_service.process_frame(frame, audio_bytes=audio_bytes)
+                with self.performance.time_stage("lipsync_ms"):
+                    return await self.lipsync_service.process_frame(frame, audio_bytes=audio_bytes)
 
             result = await with_retry(_run, retries=1)
             self._latest_frame = result.jpeg_bytes
             self.metrics.last_frame_ts = result.ts
+            self.performance.on_frame_processed()
             if self.lipsync_service.degraded_mode:
                 self.metrics.message = "degraded_mode"
+            if self.adaptive_degraded_mode and self.status().queue_pressure > 0.8:
+                self.lipsync_service.degraded_mode = True
+                self.performance.set_adaptive_degraded(True)
             await self.event_cb("av_sync_status", {"drift_ms": round(self.sync.drift_ms(), 2)})
 
     async def _publisher_loop(self) -> None:
         while self._running:
             if self._latest_frame:
-                self._latest_file.write_bytes(self._latest_frame)
+                with self.performance.time_stage("encode_ms"):
+                    self._latest_file.write_bytes(self._latest_frame)
                 if self.obs_service.is_connected:
-                    obs_state = self.obs_service.push_stream_endpoint(
-                        video_mode=self.obs_video_mode,
-                        stream_url="http://127.0.0.1:8000/api/stream/mjpeg",
-                        latest_file=self._latest_file,
-                    )
+                    with self.performance.time_stage("obs_ms"):
+                        obs_state = self.obs_service.push_stream_endpoint(
+                            video_mode=self.obs_video_mode,
+                            stream_url="http://127.0.0.1:8000/api/stream/mjpeg",
+                            latest_file=self._latest_file,
+                        )
                     self.metrics.obs_live_ready = bool(obs_state.get("ok", False))
                     await self.event_cb("obs_live_status", obs_state)
                 await self.event_cb("stream_status", self.status().model_dump(mode="json"))
@@ -154,8 +174,7 @@ class StreamPipeline:
         while True:
             frame = self._latest_frame
             if frame is None:
-                fallback = shutil.which("true")  # no-op anchor for diagnostics
-                _ = fallback
+                _ = shutil.which("true")
                 frame = b""
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
             await asyncio.sleep(0.1)

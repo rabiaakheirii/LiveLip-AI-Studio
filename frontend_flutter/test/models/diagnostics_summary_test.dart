@@ -5,6 +5,7 @@ void main() {
   test('DiagnosticsSummary.fromJson parses capability', () {
     final model = DiagnosticsSummary.fromJson({
       'stream_message': 'ok',
+      'worker_mode': 'local',
       'capability': {
         'webcam_available': true,
         'ffmpeg_available': true,
@@ -12,10 +13,13 @@ void main() {
         'obs_reachable': true,
         'selected_lipsync_engine': 'ffmpeg',
         'degraded_mode': false,
+        'remote_worker_available': false,
+        'engine_capabilities': {'ffmpeg': true}
       }
     });
 
     expect(model.webcamAvailable, true);
-    expect(model.selectedLipsyncEngine, 'ffmpeg');
+    expect(model.workerMode, 'local');
+    expect(model.engineCapabilities['ffmpeg'], true);
   });
 }

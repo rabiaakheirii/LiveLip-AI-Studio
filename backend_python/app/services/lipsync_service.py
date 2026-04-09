@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import logging
 from pathlib import Path
 
@@ -16,16 +17,27 @@ logger = logging.getLogger(__name__)
 
 
 class LipSyncService:
-    def __init__(self, preview_dir: Path, engine_name: str = "ffmpeg", experimental_enabled: bool = False) -> None:
+    def __init__(self, preview_dir: Path, engine_name: str = "ffmpeg", experimental_enabled: bool = False, model_assets_dir: str = "./models") -> None:
         self._preview_dir = preview_dir
         self._engine_name = engine_name
         self._experimental_enabled = experimental_enabled
+        self.model_assets_dir = Path(model_assets_dir)
         self._engine: BaseLipSyncEngine = self._build_engine(engine_name)
         self.degraded_mode = False
 
     @property
     def engine_name(self) -> str:
         return self._engine.name
+
+    def capabilities(self) -> dict:
+        return {
+            "mock": True,
+            "ffmpeg": True,
+            "wav2lip": self._experimental_enabled and importlib.util.find_spec("torch") is not None,
+            "musetalk": self._experimental_enabled and importlib.util.find_spec("torch") is not None,
+            "liveportrait": self._experimental_enabled and importlib.util.find_spec("torch") is not None,
+            "assets_dir_exists": self.model_assets_dir.exists(),
+        }
 
     def _build_engine(self, engine_name: str) -> BaseLipSyncEngine:
         try:

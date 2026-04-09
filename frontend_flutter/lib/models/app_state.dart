@@ -1,5 +1,6 @@
 import 'package:flutter_live_lipsync_assistant/models/camera_device.dart';
 import 'package:flutter_live_lipsync_assistant/models/diagnostics_summary.dart';
+import 'package:flutter_live_lipsync_assistant/models/performance_metrics.dart';
 import 'package:flutter_live_lipsync_assistant/models/pipeline_status.dart';
 import 'package:flutter_live_lipsync_assistant/models/preview_chunk.dart';
 
@@ -32,6 +33,7 @@ class AppState {
   final String obsLiveMode;
   final String streamMessage;
   final DiagnosticsSummary? diagnostics;
+  final PerformanceMetrics? performanceMetrics;
 
   const AppState({
     required this.status,
@@ -59,6 +61,7 @@ class AppState {
     required this.obsLiveMode,
     required this.streamMessage,
     required this.diagnostics,
+    required this.performanceMetrics,
     this.errorMessage,
   });
 
@@ -88,6 +91,7 @@ class AppState {
         obsLiveMode: 'media_source_refresh',
         streamMessage: 'idle',
         diagnostics: null,
+        performanceMetrics: null,
       );
 
   AppState copyWith({
@@ -116,6 +120,7 @@ class AppState {
     String? obsLiveMode,
     String? streamMessage,
     DiagnosticsSummary? diagnostics,
+    PerformanceMetrics? performanceMetrics,
     String? errorMessage,
   }) {
     return AppState(
@@ -144,6 +149,7 @@ class AppState {
       obsLiveMode: obsLiveMode ?? this.obsLiveMode,
       streamMessage: streamMessage ?? this.streamMessage,
       diagnostics: diagnostics ?? this.diagnostics,
+      performanceMetrics: performanceMetrics ?? this.performanceMetrics,
       errorMessage: errorMessage,
     );
   }

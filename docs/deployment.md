@@ -1,22 +1,16 @@
-# Deployment Notes (Phase 4)
+# Deployment Notes (Phase 5)
 
-## Backend Docker (optional)
+## Local safest mode
+- bind to `127.0.0.1`
+- leave `ALLOW_CORS_ORIGINS` empty
+- set `API_AUTH_TOKEN` if using LAN access
+
+## Docker backend
 ```bash
 cd backend_python
 docker build -t livelip-backend:dev .
-docker run --rm -p 8000:8000 --env-file ../.env livelip-backend:dev
 ```
 
-## Docker Compose dev
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
-
-## Flutter desktop packaging
-- Linux: `flutter build linux`
-- Windows: `flutter build windows`
-
-## External runtime dependencies
-- FFmpeg executable in PATH
-- Ollama running (if LLM path needed)
-- OBS with websocket enabled (if OBS output path needed)

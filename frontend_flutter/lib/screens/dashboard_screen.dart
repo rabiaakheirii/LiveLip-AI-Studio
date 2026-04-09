@@ -9,6 +9,8 @@ import 'package:flutter_live_lipsync_assistant/widgets/camera_selector.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/control_bar.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/diagnostics_panel.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/obs_live_status_card.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/performance_metrics_panel.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/worker_mode_status_card.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/obs_status_card.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/preview_panel.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/preview_status_card.dart';
@@ -72,6 +74,10 @@ class DashboardScreen extends ConsumerWidget {
                   OBSLiveStatusCard(ready: state.obsLiveReady, mode: state.obsLiveMode),
                   const SizedBox(height: 16),
                   DiagnosticsPanel(summary: state.diagnostics),
+                  const SizedBox(height: 8),
+                  WorkerModeStatusCard(mode: state.diagnostics?.workerMode ?? "local", remoteAvailable: state.diagnostics?.remoteWorkerAvailable ?? false),
+                  const SizedBox(height: 8),
+                  PerformanceMetricsPanel(metrics: state.performanceMetrics),
                   const SizedBox(height: 16),
                   OBSStatusCard(connected: state.obsConnected, scenes: state.obsScenes),
                   const SizedBox(height: 16),

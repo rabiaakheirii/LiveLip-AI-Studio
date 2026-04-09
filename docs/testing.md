@@ -1,25 +1,21 @@
-# Testing Guide (Phase 4)
+# Testing Guide (Phase 5)
 
-## Backend tests
+## Backend
 ```bash
 ./scripts/test_backend.sh
 ```
 
-## Flutter tests
+## Flutter
 ```bash
 ./scripts/test_flutter.sh
 ```
 
-## Smoke tests
+## Smoke
 ```bash
-# backend must already be running on localhost:8000
 ./scripts/smoke_test.sh
 ```
 
-## Manual checks
-- `GET /health`
+## Additional checks
+- `GET /api/performance/metrics`
 - `GET /api/diagnostics/summary`
-- `POST /api/stream/start`
-- `GET /api/stream/status`
-- `GET /api/stream/latest-frame`
-- `POST /api/stream/stop`
+- protected route checks with/without `X-API-Token` when `API_AUTH_TOKEN` is configured.

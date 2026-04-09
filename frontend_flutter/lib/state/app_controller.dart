@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_lipsync_assistant/models/app_state.dart';
 import 'package:flutter_live_lipsync_assistant/models/camera_device.dart';
 import 'package:flutter_live_lipsync_assistant/models/diagnostics_summary.dart';
+import 'package:flutter_live_lipsync_assistant/models/performance_metrics.dart';
 import 'package:flutter_live_lipsync_assistant/models/pipeline_status.dart';
 import 'package:flutter_live_lipsync_assistant/models/preview_chunk.dart';
 import 'package:flutter_live_lipsync_assistant/services/api_service.dart';
@@ -35,6 +36,7 @@ class AppController extends StateNotifier<AppState> {
     unawaited(refreshCameras());
     unawaited(refreshStreamStatus());
     unawaited(refreshDiagnostics());
+    unawaited(refreshPerformanceMetrics());
   }
 
   Future<void> start() async => _apiService.startPipeline();
@@ -42,6 +44,16 @@ class AppController extends StateNotifier<AppState> {
   Future<void> startStream() async => _apiService.startStream();
   Future<void> stopStream() async => _apiService.stopStream();
 
+
+
+  Future<void> refreshPerformanceMetrics() async {
+    try {
+      final payload = await _apiService.getPerformanceMetrics();
+      state = state.copyWith(performanceMetrics: PerformanceMetrics.fromJson(payload));
+    } catch (e) {
+      state = state.copyWith(logs: [...state.logs, 'refreshPerformanceMetrics failed: $e']);
+    }
+  }
 
   Future<void> refreshDiagnostics() async {
     try {

@@ -1,35 +1,24 @@
-# LiveLip-AI-Studio
+# LiveLip-AI-Studio (Phase 5)
 
-Local-first monorepo for real-time(ish) lipsync assistant with Flutter desktop UI and FastAPI backend.
-
-## Architecture overview
-- Flutter desktop app = controller/monitor UI.
-- FastAPI backend = orchestration + workers + APIs + websocket events.
-- Phase 4 hardening adds reliability boundaries, diagnostics APIs, structured logging, tests, scripts, and packaging support.
+FastAPI + Flutter local-first lipsync platform with streaming, diagnostics, security guards, performance metrics, and worker-mode abstractions.
 
 ## Feature matrix
 ### Working now
-- Phase 1+2+3 APIs and UI remain compatible.
-- Stream pipeline worker loops with bounded queues.
-- Stream metrics/events and diagnostics summary.
-- MJPEG/latest-frame preview endpoints.
-- OBS output modes: media-source refresh and browser-source URL.
+- Phase 1-4 compatibility preserved.
+- Stream worker pipeline with queue pressure and AV drift metrics.
+- Performance metrics endpoint and Flutter diagnostics panel.
+- Optional API token guard for control routes.
+- Worker mode abstraction (local implemented, remote/subprocess routed as guarded modes).
 
-### Fallback/degraded
-- Engine fallback to mock when experimental engines fail.
-- Webcam mock frame fallback when camera/OpenCV unavailable.
+### Fallback mode
+- mock/ffmpeg engine fallback and degraded mode.
+- webcam fallback frame when camera unavailable.
 
-### Placeholder/experimental
-- True Wav2Lip/MuseTalk/LivePortrait inference integrations.
-- Production-grade distributed deployment and hardened auth.
+### Experimental/dependency-gated
+- real Wav2Lip/MuseTalk/LivePortrait execution.
+- remote worker full execution path (health contract implemented, full RPC not).
 
-## External dependencies
-- FFmpeg
-- Ollama (optional but needed for live LLM path)
-- OBS + obs-websocket (optional)
-- webcam permission/device access
-
-## Install & run (Ubuntu)
+## Run (Ubuntu)
 ```bash
 cp .env.example .env
 cd backend_python
@@ -45,7 +34,7 @@ flutter pub get
 flutter run -d linux
 ```
 
-## Install & run (Windows PowerShell)
+## Run (Windows)
 ```powershell
 copy .env.example .env
 cd backend_python
@@ -62,37 +51,16 @@ flutter run -d windows
 ```
 
 ## Tests
-### Backend
 ```bash
 ./scripts/test_backend.sh
-```
-
-### Flutter
-```bash
 ./scripts/test_flutter.sh
-```
-
-### Smoke test (backend running)
-```bash
 ./scripts/smoke_test.sh
 ```
 
-## Troubleshooting
-- `pip` timeout on OpenCV: retry with higher timeout or temporarily install without OpenCV for mock mode.
-- No camera: backend falls back to mock frame.
-- No `ffmpeg`: preview rendering/stream quality is limited.
-- OBS not connected: system continues with non-OBS fallback.
-
-## Packaging notes
-- Backend Docker support: `backend_python/Dockerfile`
-- Dev compose: `docker-compose.dev.yml`
-- Flutter desktop builds are platform-specific; use `flutter build linux` / `flutter build windows`.
-
-## Runtime directories
-- runtime/audio
-- runtime/frames
-- runtime/preview
-- runtime/cache
-
-## Roadmap after Phase 4
-- Phase 5: performance optimization, real model workers, deployment security, and remote/multi-machine execution.
+## Key docs
+- `docs/architecture.md`
+- `docs/testing.md`
+- `docs/deployment.md`
+- `docs/deployment_modes.md`
+- `docs/security.md`
+- `docs/lipsync_engines.md`
