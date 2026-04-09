@@ -1,4 +1,6 @@
+import 'package:flutter_live_lipsync_assistant/models/camera_device.dart';
 import 'package:flutter_live_lipsync_assistant/models/pipeline_status.dart';
+import 'package:flutter_live_lipsync_assistant/models/preview_chunk.dart';
 
 class AppState {
   final PipelineStatus status;
@@ -12,6 +14,13 @@ class AppState {
   final Map<String, dynamic> timings;
   final String? errorMessage;
 
+  final List<CameraDevice> cameras;
+  final int selectedCameraIndex;
+  final PreviewChunk? latestPreview;
+  final List<PreviewChunk> previewHistory;
+  final int renderProgress;
+  final String previewStatus;
+
   const AppState({
     required this.status,
     required this.partialTranscript,
@@ -22,6 +31,12 @@ class AppState {
     required this.obsConnected,
     required this.obsScenes,
     required this.timings,
+    required this.cameras,
+    required this.selectedCameraIndex,
+    required this.latestPreview,
+    required this.previewHistory,
+    required this.renderProgress,
+    required this.previewStatus,
     this.errorMessage,
   });
 
@@ -35,6 +50,12 @@ class AppState {
         obsConnected: false,
         obsScenes: [],
         timings: {},
+        cameras: [],
+        selectedCameraIndex: 0,
+        latestPreview: null,
+        previewHistory: [],
+        renderProgress: 0,
+        previewStatus: 'idle',
       );
 
   AppState copyWith({
@@ -47,6 +68,12 @@ class AppState {
     bool? obsConnected,
     List<String>? obsScenes,
     Map<String, dynamic>? timings,
+    List<CameraDevice>? cameras,
+    int? selectedCameraIndex,
+    PreviewChunk? latestPreview,
+    List<PreviewChunk>? previewHistory,
+    int? renderProgress,
+    String? previewStatus,
     String? errorMessage,
   }) {
     return AppState(
@@ -59,6 +86,12 @@ class AppState {
       obsConnected: obsConnected ?? this.obsConnected,
       obsScenes: obsScenes ?? this.obsScenes,
       timings: timings ?? this.timings,
+      cameras: cameras ?? this.cameras,
+      selectedCameraIndex: selectedCameraIndex ?? this.selectedCameraIndex,
+      latestPreview: latestPreview ?? this.latestPreview,
+      previewHistory: previewHistory ?? this.previewHistory,
+      renderProgress: renderProgress ?? this.renderProgress,
+      previewStatus: previewStatus ?? this.previewStatus,
       errorMessage: errorMessage,
     );
   }

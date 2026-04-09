@@ -14,12 +14,25 @@
         "ai_response_final",
         "obs_status",
         "pipeline_timing",
+        "camera_list",
+        "camera_selected",
+        "preview_chunk_ready",
+        "preview_status",
+        "render_progress",
+        "render_error",
         "log",
         "error"
       ]
     },
-    "timestamp": {"type": "string", "format": "date-time"},
-    "trace_id": {"type": ["string", "null"]},
-    "data": {"type": "object"}
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": ["string", "null"]
+    },
+    "data": {
+      "type": "object"
+    }
   }
 }

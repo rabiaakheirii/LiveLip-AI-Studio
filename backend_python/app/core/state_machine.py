@@ -7,11 +7,15 @@ from app.core.events import PipelineState
 
 class PipelineStateMachine:
     _allowed_transitions: Dict[PipelineState, Set[PipelineState]] = {
-        PipelineState.idle: {PipelineState.listening, PipelineState.error},
+        PipelineState.idle: {PipelineState.listening, PipelineState.camera_ready, PipelineState.error},
         PipelineState.listening: {PipelineState.transcribing, PipelineState.idle, PipelineState.error},
         PipelineState.transcribing: {PipelineState.thinking, PipelineState.listening, PipelineState.error},
         PipelineState.thinking: {PipelineState.speaking, PipelineState.error},
-        PipelineState.speaking: {PipelineState.lip_syncing, PipelineState.streaming, PipelineState.error},
+        PipelineState.speaking: {PipelineState.lip_syncing, PipelineState.streaming, PipelineState.camera_ready, PipelineState.error},
+        PipelineState.camera_ready: {PipelineState.capturing_video, PipelineState.rendering_preview, PipelineState.error},
+        PipelineState.capturing_video: {PipelineState.rendering_preview, PipelineState.error},
+        PipelineState.rendering_preview: {PipelineState.preview_ready, PipelineState.error},
+        PipelineState.preview_ready: {PipelineState.streaming, PipelineState.idle, PipelineState.error},
         PipelineState.lip_syncing: {PipelineState.streaming, PipelineState.error},
         PipelineState.streaming: {PipelineState.listening, PipelineState.idle, PipelineState.error},
         PipelineState.error: {PipelineState.idle},

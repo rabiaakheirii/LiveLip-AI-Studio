@@ -5,3 +5,4 @@ pydantic-settings==2.8.1
 httpx==0.28.1
 python-dotenv==1.1.0
 obsws-python==1.7.0
+opencv-python==4.11.0.86

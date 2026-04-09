@@ -3,9 +3,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_pipeline import router as pipeline_router
+from app.api.routes_preview import router as preview_router
 from app.api.routes_settings import router as settings_router
+from app.api.routes_webcam import router as webcam_router
 from app.core.config import get_settings
 from app.core.orchestrator import EventBus, PipelineOrchestrator
 
@@ -30,6 +33,9 @@ def create_app() -> FastAPI:
 
     app.include_router(pipeline_router)
     app.include_router(settings_router)
+    app.include_router(preview_router)
+    app.include_router(webcam_router)
+    app.mount("/preview", StaticFiles(directory=orchestrator.preview_dir), name="preview")
 
     @app.get("/health")
     async def health() -> dict:
@@ -38,6 +44,7 @@ def create_app() -> FastAPI:
     @app.websocket("/ws/events")
     async def ws_events(websocket: WebSocket):
         await event_bus.connect(websocket)
+        await orchestrator.publish_camera_list()
         try:
             while True:
                 await websocket.receive_text()

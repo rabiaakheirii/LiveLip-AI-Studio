@@ -21,11 +21,24 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> getSettings() async {
-    final resp = await http.get(Uri.parse('$_baseUrl/settings'));
+  Future<Map<String, dynamic>> getCameraDevices() async {
+    final resp = await http.get(Uri.parse('$_baseUrl/api/webcam/devices'));
     if (resp.statusCode >= 400) {
-      throw Exception('Settings failed: ${resp.body}');
+      throw Exception('Cameras failed: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
+
+  Future<void> selectCamera(int index) async {
+    final resp = await http.post(
+      Uri.parse('$_baseUrl/api/webcam/select'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'index': index}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Select camera failed: ${resp.body}');
+    }
+  }
+
+  String makePreviewUrl(String path) => '$_baseUrl$path';
 }

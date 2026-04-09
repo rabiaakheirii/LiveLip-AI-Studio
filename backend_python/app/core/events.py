@@ -15,6 +15,10 @@ class PipelineState(str, Enum):
     speaking = "speaking"
     lip_syncing = "lip_syncing"
     streaming = "streaming"
+    camera_ready = "camera_ready"
+    capturing_video = "capturing_video"
+    rendering_preview = "rendering_preview"
+    preview_ready = "preview_ready"
     error = "error"
 
 
@@ -26,6 +30,12 @@ class EventType(str, Enum):
     ai_response_final = "ai_response_final"
     obs_status = "obs_status"
     pipeline_timing = "pipeline_timing"
+    camera_list = "camera_list"
+    camera_selected = "camera_selected"
+    preview_chunk_ready = "preview_chunk_ready"
+    preview_status = "preview_status"
+    render_progress = "render_progress"
+    render_error = "render_error"
     log = "log"
     error = "error"
 

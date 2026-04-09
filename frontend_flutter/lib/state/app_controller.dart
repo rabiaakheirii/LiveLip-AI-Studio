@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_lipsync_assistant/models/app_state.dart';
+import 'package:flutter_live_lipsync_assistant/models/camera_device.dart';
 import 'package:flutter_live_lipsync_assistant/models/pipeline_status.dart';
+import 'package:flutter_live_lipsync_assistant/models/preview_chunk.dart';
 import 'package:flutter_live_lipsync_assistant/services/api_service.dart';
 import 'package:flutter_live_lipsync_assistant/services/websocket_service.dart';
 
@@ -29,6 +31,7 @@ class AppController extends StateNotifier<AppState> {
   void initialize() {
     _wsService.connect();
     _subscription ??= _wsService.events.listen(_handleEvent);
+    unawaited(refreshCameras());
   }
 
   Future<void> start() async {
@@ -37,6 +40,23 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> stop() async {
     await _apiService.stopPipeline();
+  }
+
+  Future<void> refreshCameras() async {
+    try {
+      final payload = await _apiService.getCameraDevices();
+      final items = ((payload['items'] as List?) ?? [])
+          .map((e) => CameraDevice.fromJson((e as Map).cast<String, dynamic>()))
+          .toList();
+      state = state.copyWith(cameras: items, selectedCameraIndex: payload['selected_index'] as int? ?? 0);
+    } catch (e) {
+      state = state.copyWith(logs: [...state.logs, 'refreshCameras failed: $e']);
+    }
+  }
+
+  Future<void> selectCamera(int index) async {
+    await _apiService.selectCamera(index);
+    state = state.copyWith(selectedCameraIndex: index);
   }
 
   void _handleEvent(Map<String, dynamic> event) {
@@ -67,6 +87,29 @@ class AppController extends StateNotifier<AppState> {
         break;
       case 'pipeline_timing':
         state = state.copyWith(timings: data);
+        break;
+      case 'camera_list':
+        final cameras = ((data['cameras'] as List?) ?? [])
+            .map((e) => CameraDevice.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+        state = state.copyWith(cameras: cameras, selectedCameraIndex: data['selected_index'] as int? ?? 0);
+        break;
+      case 'camera_selected':
+        state = state.copyWith(selectedCameraIndex: data['index'] as int? ?? state.selectedCameraIndex);
+        break;
+      case 'preview_chunk_ready':
+        final chunk = PreviewChunk.fromJson(data);
+        final history = [chunk, ...state.previewHistory].take(10).toList();
+        state = state.copyWith(latestPreview: chunk, previewHistory: history, previewStatus: 'ready');
+        break;
+      case 'preview_status':
+        state = state.copyWith(previewStatus: (data['ready'] == true) ? 'ready' : 'pending');
+        break;
+      case 'render_progress':
+        state = state.copyWith(renderProgress: data['progress'] as int? ?? 0, previewStatus: data['stage'] as String? ?? 'rendering');
+        break;
+      case 'render_error':
+        state = state.copyWith(previewStatus: 'error', errorMessage: data['message'] as String? ?? 'render error');
         break;
       case 'error':
         state = state.copyWith(errorMessage: data['message'] as String? ?? 'Unknown error', status: PipelineStatus.error);

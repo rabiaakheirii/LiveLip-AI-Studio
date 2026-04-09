@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,6 +23,9 @@ class Settings(BaseSettings):
     obs_password: str = Field(default="")
     obs_scene: str = Field(default="Scene")
     obs_audio_source: str = Field(default="LiveLipSyncAudio")
+    obs_video_source: str = Field(default="LiveLipSyncVideo")
+
+    webcam_max_devices: int = Field(default=3)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

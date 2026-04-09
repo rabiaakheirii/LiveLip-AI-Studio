@@ -16,12 +16,21 @@ class OBSStatus:
 
 
 class OBSService:
-    def __init__(self, host: str, port: int, password: str, default_scene: str, audio_source: str) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        password: str,
+        default_scene: str,
+        audio_source: str,
+        video_source: str,
+    ) -> None:
         self._host = host
         self._port = port
         self._password = password
         self._default_scene = default_scene
         self._audio_source = audio_source
+        self._video_source = video_source
         self._client: ReqClient | None = None
 
     def connect(self) -> OBSStatus:
@@ -34,31 +43,26 @@ class OBSService:
             self._client = None
             return OBSStatus(connected=False, host=self._host, port=self._port, scenes=[])
 
-    def list_scenes(self) -> List[str]:
-        if not self._client:
-            return []
-        scenes_resp = self._client.get_scene_list()
-        return [scene["sceneName"] for scene in scenes_resp.scenes]
-
-    def set_current_scene(self, scene_name: str) -> None:
-        if not self._client:
-            raise RuntimeError("OBS is not connected")
-        self._client.set_current_program_scene(scene_name)
-
     def push_audio_file(self, wav_path: Path) -> dict:
-        """MVP action: update a media source file path in OBS.
-
-        Requires `self._audio_source` to point to a Media Source input.
-        """
         if not self._client:
             raise RuntimeError("OBS is not connected")
         self._client.set_input_settings(
             self._audio_source,
-            {
-                "local_file": str(wav_path),
-                "is_local_file": True,
-                "looping": False,
-            },
+            {"local_file": str(wav_path), "is_local_file": True, "looping": False},
             overlay=True,
         )
         return {"audio_source": self._audio_source, "file": str(wav_path)}
+
+    def push_preview_video(self, preview_path: Path) -> dict:
+        """Prepare video workflow using Media Source refresh in OBS.
+
+        TODO: Replace with low-latency live video feed (virtual cam / RTMP / NDI).
+        """
+        if not self._client:
+            raise RuntimeError("OBS is not connected")
+        self._client.set_input_settings(
+            self._video_source,
+            {"local_file": str(preview_path), "is_local_file": True, "looping": False},
+            overlay=True,
+        )
+        return {"video_source": self._video_source, "file": str(preview_path)}
