@@ -15,6 +15,7 @@ class AudioPacket:
 class AudioQueue:
     def __init__(self, maxsize: int) -> None:
         self._queue: asyncio.Queue[AudioPacket] = asyncio.Queue(maxsize=maxsize)
+        self.maxsize = maxsize
 
     async def put(self, packet: AudioPacket) -> None:
         if self._queue.full():

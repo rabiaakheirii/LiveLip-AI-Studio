@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +10,9 @@ from typing import Awaitable, Callable
 
 from app.core.audio_queue import AudioPacket, AudioQueue
 from app.core.av_sync import AVSyncEstimator
+from app.core.error_handling import boundary
 from app.core.frame_queue import FramePacket, FrameQueue
+from app.core.retry import with_retry
 from app.core.worker_manager import WorkerManager
 from app.models.stream_metrics import StreamMetrics
 from app.services.lipsync_service import LipSyncService
@@ -87,6 +90,8 @@ class StreamPipeline:
     async def stop(self) -> None:
         self._running = False
         await self.workers.stop_all()
+        self.frame_queue = FrameQueue(self.frame_queue.maxsize)
+        self.audio_queue = AudioQueue(self.audio_queue.maxsize)
         self.metrics.message = "stopped"
         await self.event_cb("stream_stopped", {"message": "Stream workers stopped"})
 
@@ -94,22 +99,24 @@ class StreamPipeline:
         interval = 1.0 / self.target_fps
         while self._running:
             start = time.perf_counter()
-            self._latest_seq += 1
-            frame = FramePacket(seq_id=self._latest_seq, ts=datetime.utcnow(), jpeg_bytes=self.webcam_service.capture_frame_bytes())
-            await self.frame_queue.put(frame)
-            self.sync.on_frame(frame.ts)
-            if self.frame_queue.dropped_frames > 0:
-                await self.event_cb("frame_dropped", {"count": self.frame_queue.dropped_frames})
-            await self.event_cb("queue_pressure", {"pressure": round(self.status().queue_pressure, 3)})
+            async with boundary("capture_loop"):
+                self._latest_seq += 1
+                frame = FramePacket(seq_id=self._latest_seq, ts=datetime.utcnow(), jpeg_bytes=self.webcam_service.capture_frame_bytes())
+                await self.frame_queue.put(frame)
+                self.sync.on_frame(frame.ts)
+                if self.frame_queue.dropped_frames > 0:
+                    await self.event_cb("frame_dropped", {"count": self.frame_queue.dropped_frames})
+                await self.event_cb("queue_pressure", {"pressure": round(self.status().queue_pressure, 3)})
             await asyncio.sleep(max(0.0, interval - (time.perf_counter() - start)))
 
     async def _audio_loop(self) -> None:
         seq = 0
         while self._running:
-            seq += 1
-            packet = AudioPacket(seq_id=seq, ts=datetime.utcnow(), wav_bytes=b"\x00\x00")
-            await self.audio_queue.put(packet)
-            self.sync.on_audio(packet.ts)
+            async with boundary("audio_loop"):
+                seq += 1
+                packet = AudioPacket(seq_id=seq, ts=datetime.utcnow(), wav_bytes=b"\x00\x00")
+                await self.audio_queue.put(packet)
+                self.sync.on_audio(packet.ts)
             await asyncio.sleep(0.2)
 
     async def _inference_loop(self) -> None:
@@ -117,9 +124,15 @@ class StreamPipeline:
             frame = await self.frame_queue.get()
             audio_packet = self.audio_queue.latest_or_none()
             audio_bytes = audio_packet.wav_bytes if audio_packet else None
-            result = await self.lipsync_service.process_frame(frame, audio_bytes=audio_bytes)
+
+            async def _run():
+                return await self.lipsync_service.process_frame(frame, audio_bytes=audio_bytes)
+
+            result = await with_retry(_run, retries=1)
             self._latest_frame = result.jpeg_bytes
             self.metrics.last_frame_ts = result.ts
+            if self.lipsync_service.degraded_mode:
+                self.metrics.message = "degraded_mode"
             await self.event_cb("av_sync_status", {"drift_ms": round(self.sync.drift_ms(), 2)})
 
     async def _publisher_loop(self) -> None:
@@ -139,6 +152,10 @@ class StreamPipeline:
 
     async def mjpeg_generator(self):
         while True:
-            frame = self._latest_frame or b""
+            frame = self._latest_frame
+            if frame is None:
+                fallback = shutil.which("true")  # no-op anchor for diagnostics
+                _ = fallback
+                frame = b""
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
             await asyncio.sleep(0.1)

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import WebSocket
 
 from app.core.config import Settings
@@ -13,15 +15,16 @@ from app.core.events import EventMessage, EventType, PipelineState
 from app.core.state_machine import PipelineStateMachine
 from app.core.storage_paths import StoragePaths
 from app.core.stream_pipeline import StreamPipeline
+from app.models.diagnostics import CapabilityStatus, DiagnosticsSummary
 from app.models.stream_metrics import StreamMetrics
 from app.models.webcam import CameraDevice, PreviewChunk
+from app.services.lipsync_service import LipSyncService
 from app.services.obs_service import OBSService
 from app.services.ollama_service import OllamaService
 from app.services.render_queue_service import RenderQueueService
 from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.webcam_service import WebcamService
-from app.services.lipsync_service import LipSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ class EventBus:
 
 class PipelineOrchestrator:
     def __init__(self, settings: Settings, event_bus: EventBus):
+        self.settings = settings
         self._event_bus = event_bus
         self._sm = PipelineStateMachine()
         self._task: asyncio.Task | None = None
@@ -63,11 +67,7 @@ class PipelineOrchestrator:
         self.ollama_service = OllamaService(settings.ollama_base_url, settings.ollama_model)
         self.tts_service = TTSService(str(self._paths.audio), settings.tts_voice)
         self.webcam_service = WebcamService(self._paths.frames, max_devices=settings.webcam_max_devices)
-        self.lipsync_service = LipSyncService(
-            self._paths.preview,
-            engine_name=settings.lipsync_engine,
-            experimental_enabled=settings.enable_experimental_engines,
-        )
+        self.lipsync_service = LipSyncService(self._paths.preview, engine_name=settings.lipsync_engine, experimental_enabled=settings.enable_experimental_engines)
         self.render_queue = RenderQueueService(max_history=25)
         self.obs_service = OBSService(
             host=settings.obs_host,
@@ -127,6 +127,35 @@ class PipelineOrchestrator:
         async for chunk in self.stream_pipeline.mjpeg_generator():
             yield chunk
 
+    async def _ollama_reachable(self) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                r = await client.get(f"{self.settings.ollama_base_url.rstrip('/')}/api/tags")
+                return r.status_code < 500
+        except Exception:
+            return False
+
+    def _obs_reachable(self) -> bool:
+        return self.obs_service.is_connected
+
+    async def get_diagnostics_summary(self) -> DiagnosticsSummary:
+        cams = self.list_cameras()
+        return DiagnosticsSummary(
+            app_name=self.settings.app_name,
+            environment=self.settings.environment,
+            log_level=self.settings.log_level,
+            stream_running=self.stream_pipeline.running,
+            stream_message=self.stream_pipeline.status().message,
+            capability=CapabilityStatus(
+                webcam_available=any(c.available for c in cams),
+                ffmpeg_available=shutil.which("ffmpeg") is not None,
+                ollama_reachable=await self._ollama_reachable(),
+                obs_reachable=self._obs_reachable(),
+                selected_lipsync_engine=self.lipsync_service.engine_name,
+                degraded_mode=self.lipsync_service.degraded_mode,
+            ),
+        )
+
     async def start_stream(self) -> None:
         await self._transition(PipelineState.stream_initializing)
         await self.stream_pipeline.start()
@@ -155,7 +184,9 @@ class PipelineOrchestrator:
 
     async def _transition(self, next_state: PipelineState) -> None:
         if self._sm.can_transition(next_state):
+            prev = self.state
             self._sm.transition(next_state)
+            logger.info("state_transition %s -> %s", prev.value, self.state.value)
             await self._emit(EventType.pipeline_state, {"state": self.state.value})
 
     async def start(self) -> None:
@@ -184,11 +215,9 @@ class PipelineOrchestrator:
             await self._transition(PipelineState.transcribing)
             final_text = ""
             async for chunk in self.stt_service.stream_transcripts():
+                await self._emit(EventType.transcript_final if chunk.is_final else EventType.transcript_partial, {"text": chunk.text})
                 if chunk.is_final:
                     final_text = chunk.text
-                    await self._emit(EventType.transcript_final, {"text": chunk.text})
-                else:
-                    await self._emit(EventType.transcript_partial, {"text": chunk.text})
 
             await self._transition(PipelineState.thinking)
             reply = []
@@ -201,34 +230,21 @@ class PipelineOrchestrator:
             await self._emit(EventType.ai_response_final, {"text": full_reply})
 
             await self._transition(PipelineState.speaking)
-            tts_start = time.perf_counter()
             wav_path = await self.tts_service.synthesize_to_wav(full_reply)
-            self._timings["tts_seconds"] = round(time.perf_counter() - tts_start, 3)
 
             await self._transition(PipelineState.camera_ready)
-            await self._transition(PipelineState.capturing_video)
             frame_path = self.webcam_service.capture_frame()
-
             await self._transition(PipelineState.rendering_preview)
-            await self._emit(EventType.render_progress, {"stage": "rendering", "progress": 25})
             preview = await self.lipsync_service.render_chunk(wav_path, frame_path)
-            await self._emit(EventType.render_progress, {"stage": "rendering", "progress": 90})
             self.render_queue.push(preview)
             await self._emit(EventType.preview_chunk_ready, preview.model_dump(mode="json"))
             await self._emit(EventType.preview_status, {"ready": True, "latest": preview.model_dump(mode="json")})
 
-            await self._transition(PipelineState.preview_ready)
             await self._transition(PipelineState.streaming)
             if obs.connected:
                 await self._emit(EventType.log, {"message": "OBS audio updated", "meta": self.obs_service.push_audio_file(wav_path)})
-                try:
-                    await self._emit(EventType.log, {"message": "OBS preview video updated", "meta": self.obs_service.push_preview_video(self._paths.preview / preview.file_name)})
-                except Exception as exc:
-                    await self._emit(EventType.log, {"message": f"OBS preview push skipped: {exc}"})
-
             self._timings["total_seconds"] = round(time.perf_counter() - cycle_start, 3)
             await self._emit(EventType.pipeline_timing, self._timings)
-            await self._emit(EventType.render_progress, {"stage": "done", "progress": 100})
             await self._transition(PipelineState.idle)
         except asyncio.CancelledError:
             logger.info("Pipeline run cancelled")

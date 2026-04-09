@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_lipsync_assistant/models/app_state.dart';
 import 'package:flutter_live_lipsync_assistant/models/camera_device.dart';
+import 'package:flutter_live_lipsync_assistant/models/diagnostics_summary.dart';
 import 'package:flutter_live_lipsync_assistant/models/pipeline_status.dart';
 import 'package:flutter_live_lipsync_assistant/models/preview_chunk.dart';
 import 'package:flutter_live_lipsync_assistant/services/api_service.dart';
@@ -33,12 +34,23 @@ class AppController extends StateNotifier<AppState> {
     _subscription ??= _wsService.events.listen(_handleEvent);
     unawaited(refreshCameras());
     unawaited(refreshStreamStatus());
+    unawaited(refreshDiagnostics());
   }
 
   Future<void> start() async => _apiService.startPipeline();
   Future<void> stop() async => _apiService.stopPipeline();
   Future<void> startStream() async => _apiService.startStream();
   Future<void> stopStream() async => _apiService.stopStream();
+
+
+  Future<void> refreshDiagnostics() async {
+    try {
+      final payload = await _apiService.getDiagnosticsSummary();
+      state = state.copyWith(diagnostics: DiagnosticsSummary.fromJson(payload));
+    } catch (e) {
+      state = state.copyWith(logs: [...state.logs, 'refreshDiagnostics failed: $e']);
+    }
+  }
 
   Future<void> refreshStreamStatus() async {
     try {

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,12 +8,14 @@ class Settings(BaseSettings):
     app_name: str = Field(default="flutter_live_lipsync_assistant")
     environment: str = Field(default="dev")
     log_level: str = Field(default="INFO")
+    json_logs: bool = Field(default=False)
 
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=8000)
 
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
     ollama_model: str = Field(default="llama3.2:3b")
+    ollama_timeout_seconds: int = Field(default=60)
 
     tts_voice: str = Field(default="piper-en_US-amy-medium")
     output_dir: str = Field(default="./runtime")
@@ -37,6 +39,21 @@ class Settings(BaseSettings):
     stream_preview_mode: str = Field(default="mjpeg")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("stream_target_fps")
+    @classmethod
+    def validate_fps(cls, value: int) -> int:
+        if value < 1 or value > 60:
+            raise ValueError("STREAM_TARGET_FPS must be between 1 and 60")
+        return value
+
+    @field_validator("lipsync_engine")
+    @classmethod
+    def validate_engine(cls, value: str) -> str:
+        allowed = {"mock", "ffmpeg", "wav2lip", "musetalk", "liveportrait"}
+        if value not in allowed:
+            raise ValueError(f"LIPSYNC_ENGINE must be one of {sorted(allowed)}")
+        return value
 
 
 @lru_cache(maxsize=1)

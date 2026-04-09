@@ -48,6 +48,12 @@ class ApiService {
     if (resp.statusCode >= 400) throw Exception('Stop stream failed: ${resp.body}');
   }
 
+  Future<Map<String, dynamic>> getDiagnosticsSummary() async {
+    final resp = await http.get(Uri.parse('$_baseUrl/api/diagnostics/summary'));
+    if (resp.statusCode >= 400) throw Exception('Diagnostics failed: ${resp.body}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   String makePreviewUrl(String path) => '$_baseUrl$path';
   String latestFrameUrl() => '$_baseUrl/api/stream/latest-frame';
   String mjpegUrl() => '$_baseUrl/api/stream/mjpeg';

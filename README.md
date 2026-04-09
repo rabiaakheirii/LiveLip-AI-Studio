@@ -1,25 +1,35 @@
-# flutter_live_lipsync_assistant
+# LiveLip-AI-Studio
 
-Local-first monorepo for Flutter-controlled live lip-sync assistant.
+Local-first monorepo for real-time(ish) lipsync assistant with Flutter desktop UI and FastAPI backend.
 
-## Phases implemented
-- Phase 1: STT -> Ollama -> TTS -> OBS audio skeleton.
-- Phase 2: webcam abstraction + chunk preview rendering + preview APIs.
-- Phase 3 (this repo state): near-real-time stream architecture with worker loops, queue pressure metrics, MJPEG/latest-frame output, engine adapters, and OBS live-output fallback mode.
+## Architecture overview
+- Flutter desktop app = controller/monitor UI.
+- FastAPI backend = orchestration + workers + APIs + websocket events.
+- Phase 4 hardening adds reliability boundaries, diagnostics APIs, structured logging, tests, scripts, and packaging support.
 
-## Key routes
-- Health: `GET /health`
-- Pipeline: `/pipeline/start`, `/pipeline/stop`, `/pipeline/state`
-- Webcam: `/api/webcam/devices`, `/api/webcam/select`
-- Preview compatibility: `/api/preview/latest`, `/api/preview/history`, `/preview/<file>`
-- Stream mode:
-  - `POST /api/stream/start`
-  - `POST /api/stream/stop`
-  - `GET /api/stream/status`
-  - `GET /api/stream/latest-frame`
-  - `GET /api/stream/mjpeg`
+## Feature matrix
+### Working now
+- Phase 1+2+3 APIs and UI remain compatible.
+- Stream pipeline worker loops with bounded queues.
+- Stream metrics/events and diagnostics summary.
+- MJPEG/latest-frame preview endpoints.
+- OBS output modes: media-source refresh and browser-source URL.
 
-## Run (Ubuntu)
+### Fallback/degraded
+- Engine fallback to mock when experimental engines fail.
+- Webcam mock frame fallback when camera/OpenCV unavailable.
+
+### Placeholder/experimental
+- True Wav2Lip/MuseTalk/LivePortrait inference integrations.
+- Production-grade distributed deployment and hardened auth.
+
+## External dependencies
+- FFmpeg
+- Ollama (optional but needed for live LLM path)
+- OBS + obs-websocket (optional)
+- webcam permission/device access
+
+## Install & run (Ubuntu)
 ```bash
 cp .env.example .env
 cd backend_python
@@ -29,14 +39,13 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-New terminal:
 ```bash
 cd frontend_flutter
 flutter pub get
 flutter run -d linux
 ```
 
-## Run (Windows PowerShell)
+## Install & run (Windows PowerShell)
 ```powershell
 copy .env.example .env
 cd backend_python
@@ -46,31 +55,44 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-New terminal:
 ```powershell
 cd frontend_flutter
 flutter pub get
 flutter run -d windows
 ```
 
-## Stream smoke test
+## Tests
+### Backend
 ```bash
-curl -X POST http://127.0.0.1:8000/api/stream/start
-curl http://127.0.0.1:8000/api/stream/status
-curl -o latest.jpg http://127.0.0.1:8000/api/stream/latest-frame
-curl -X POST http://127.0.0.1:8000/api/stream/stop
+./scripts/test_backend.sh
 ```
 
-## Implemented now vs fallback
-- Implemented now:
-  - continuous worker pipeline with capture/audio/inference/publisher loops
-  - bounded queues + backpressure + dropped frame counting
-  - MJPEG/latest-frame stream endpoints
-  - stream websocket events and metrics
-  - OBS live output abstraction with file-refresh/browser-source modes
-- Fallback mode:
-  - mock lipsync engine and ffmpeg pass-through engine
-  - degraded mode when experimental engine fails/unavailable
-- Structured TODO:
-  - true Wav2Lip/MuseTalk/LivePortrait runtime integration
-  - production-grade low-latency transport (WebRTC/RTMP/NDI)
+### Flutter
+```bash
+./scripts/test_flutter.sh
+```
+
+### Smoke test (backend running)
+```bash
+./scripts/smoke_test.sh
+```
+
+## Troubleshooting
+- `pip` timeout on OpenCV: retry with higher timeout or temporarily install without OpenCV for mock mode.
+- No camera: backend falls back to mock frame.
+- No `ffmpeg`: preview rendering/stream quality is limited.
+- OBS not connected: system continues with non-OBS fallback.
+
+## Packaging notes
+- Backend Docker support: `backend_python/Dockerfile`
+- Dev compose: `docker-compose.dev.yml`
+- Flutter desktop builds are platform-specific; use `flutter build linux` / `flutter build windows`.
+
+## Runtime directories
+- runtime/audio
+- runtime/frames
+- runtime/preview
+- runtime/cache
+
+## Roadmap after Phase 4
+- Phase 5: performance optimization, real model workers, deployment security, and remote/multi-machine execution.
