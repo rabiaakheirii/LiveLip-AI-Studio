@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import WebSocket
@@ -11,6 +12,8 @@ from app.core.config import Settings
 from app.core.events import EventMessage, EventType, PipelineState
 from app.core.state_machine import PipelineStateMachine
 from app.core.storage_paths import StoragePaths
+from app.core.stream_pipeline import StreamPipeline
+from app.models.stream_metrics import StreamMetrics
 from app.models.webcam import CameraDevice, PreviewChunk
 from app.services.obs_service import OBSService
 from app.services.ollama_service import OllamaService
@@ -21,6 +24,8 @@ from app.services.webcam_service import WebcamService
 from app.services.lipsync_service import LipSyncService
 
 logger = logging.getLogger(__name__)
+
+_EVENT_MAP = {e.value: e for e in EventType}
 
 
 class EventBus:
@@ -58,7 +63,11 @@ class PipelineOrchestrator:
         self.ollama_service = OllamaService(settings.ollama_base_url, settings.ollama_model)
         self.tts_service = TTSService(str(self._paths.audio), settings.tts_voice)
         self.webcam_service = WebcamService(self._paths.frames, max_devices=settings.webcam_max_devices)
-        self.lipsync_service = LipSyncService(self._paths.preview)
+        self.lipsync_service = LipSyncService(
+            self._paths.preview,
+            engine_name=settings.lipsync_engine,
+            experimental_enabled=settings.enable_experimental_engines,
+        )
         self.render_queue = RenderQueueService(max_history=25)
         self.obs_service = OBSService(
             host=settings.obs_host,
@@ -67,6 +76,17 @@ class PipelineOrchestrator:
             default_scene=settings.obs_scene,
             audio_source=settings.obs_audio_source,
             video_source=settings.obs_video_source,
+        )
+        self.stream_pipeline = StreamPipeline(
+            webcam_service=self.webcam_service,
+            lipsync_service=self.lipsync_service,
+            obs_service=self.obs_service,
+            event_cb=self._emit_by_name,
+            output_dir=self._paths.preview,
+            target_fps=settings.stream_target_fps,
+            frame_queue_size=settings.stream_frame_queue_size,
+            audio_queue_size=settings.stream_audio_queue_size,
+            obs_video_mode=settings.obs_video_mode,
         )
 
     @property
@@ -82,7 +102,7 @@ class PipelineOrchestrator:
         return self._timings
 
     @property
-    def preview_dir(self):
+    def preview_dir(self) -> Path:
         return self._paths.preview
 
     def latest_preview(self) -> PreviewChunk | None:
@@ -97,6 +117,27 @@ class PipelineOrchestrator:
     def select_camera(self, index: int) -> CameraDevice:
         return self.webcam_service.select_camera(index)
 
+    def stream_status(self) -> StreamMetrics:
+        return self.stream_pipeline.status()
+
+    def stream_latest_frame(self) -> bytes | None:
+        return self.stream_pipeline.latest_frame()
+
+    async def stream_mjpeg(self):
+        async for chunk in self.stream_pipeline.mjpeg_generator():
+            yield chunk
+
+    async def start_stream(self) -> None:
+        await self._transition(PipelineState.stream_initializing)
+        await self.stream_pipeline.start()
+        await self._transition(PipelineState.streaming_live)
+
+    async def stop_stream(self) -> None:
+        await self.stream_pipeline.stop()
+        if self.state != PipelineState.idle:
+            self._sm = PipelineStateMachine()
+            await self._emit(EventType.pipeline_state, {"state": self.state.value})
+
     async def publish_camera_list(self) -> None:
         cameras = [c.model_dump(mode="json") for c in self.list_cameras()]
         await self._emit(EventType.camera_list, {"cameras": cameras, "selected_index": self.webcam_service.selected_index})
@@ -104,12 +145,18 @@ class PipelineOrchestrator:
     async def publish_camera_selected(self, camera: CameraDevice) -> None:
         await self._emit(EventType.camera_selected, camera.model_dump(mode="json"))
 
+    async def _emit_by_name(self, event_name: str, data: dict) -> None:
+        event = _EVENT_MAP.get(event_name)
+        if event:
+            await self._emit(event, data)
+
     async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
         await self._event_bus.broadcast(EventMessage(event_type=event_type, data=data))
 
     async def _transition(self, next_state: PipelineState) -> None:
-        self._sm.transition(next_state)
-        await self._emit(EventType.pipeline_state, {"state": self.state.value})
+        if self._sm.can_transition(next_state):
+            self._sm.transition(next_state)
+            await self._emit(EventType.pipeline_state, {"state": self.state.value})
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run_once(), name="pipeline-run")
@@ -122,6 +169,7 @@ class PipelineOrchestrator:
             except asyncio.CancelledError:
                 pass
         self._task = None
+        await self.stop_stream()
         self._sm = PipelineStateMachine()
         await self._emit(EventType.pipeline_state, {"state": self.state.value})
 
@@ -130,10 +178,7 @@ class PipelineOrchestrator:
         try:
             await self._transition(PipelineState.listening)
             obs = self.obs_service.connect()
-            await self._emit(
-                EventType.obs_status,
-                {"connected": obs.connected, "scenes": obs.scenes, "host": obs.host, "port": obs.port},
-            )
+            await self._emit(EventType.obs_status, {"connected": obs.connected, "scenes": obs.scenes, "host": obs.host, "port": obs.port})
             await self.publish_camera_list()
 
             await self._transition(PipelineState.transcribing)
@@ -175,18 +220,15 @@ class PipelineOrchestrator:
             await self._transition(PipelineState.preview_ready)
             await self._transition(PipelineState.streaming)
             if obs.connected:
-                audio_result = self.obs_service.push_audio_file(wav_path)
-                await self._emit(EventType.log, {"message": "OBS audio updated", "meta": audio_result})
+                await self._emit(EventType.log, {"message": "OBS audio updated", "meta": self.obs_service.push_audio_file(wav_path)})
                 try:
-                    video_result = self.obs_service.push_preview_video(self._paths.preview / preview.file_name)
-                    await self._emit(EventType.log, {"message": "OBS preview video updated", "meta": video_result})
+                    await self._emit(EventType.log, {"message": "OBS preview video updated", "meta": self.obs_service.push_preview_video(self._paths.preview / preview.file_name)})
                 except Exception as exc:
                     await self._emit(EventType.log, {"message": f"OBS preview push skipped: {exc}"})
 
             self._timings["total_seconds"] = round(time.perf_counter() - cycle_start, 3)
             await self._emit(EventType.pipeline_timing, self._timings)
             await self._emit(EventType.render_progress, {"stage": "done", "progress": 100})
-
             await self._transition(PipelineState.idle)
         except asyncio.CancelledError:
             logger.info("Pipeline run cancelled")

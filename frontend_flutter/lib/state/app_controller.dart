@@ -32,14 +32,21 @@ class AppController extends StateNotifier<AppState> {
     _wsService.connect();
     _subscription ??= _wsService.events.listen(_handleEvent);
     unawaited(refreshCameras());
+    unawaited(refreshStreamStatus());
   }
 
-  Future<void> start() async {
-    await _apiService.startPipeline();
-  }
+  Future<void> start() async => _apiService.startPipeline();
+  Future<void> stop() async => _apiService.stopPipeline();
+  Future<void> startStream() async => _apiService.startStream();
+  Future<void> stopStream() async => _apiService.stopStream();
 
-  Future<void> stop() async {
-    await _apiService.stopPipeline();
+  Future<void> refreshStreamStatus() async {
+    try {
+      final status = await _apiService.getStreamStatus();
+      _applyStreamStatus(status);
+    } catch (e) {
+      state = state.copyWith(logs: [...state.logs, 'refreshStreamStatus failed: $e']);
+    }
   }
 
   Future<void> refreshCameras() async {
@@ -57,6 +64,19 @@ class AppController extends StateNotifier<AppState> {
   Future<void> selectCamera(int index) async {
     await _apiService.selectCamera(index);
     state = state.copyWith(selectedCameraIndex: index);
+  }
+
+  void _applyStreamStatus(Map<String, dynamic> data) {
+    state = state.copyWith(
+      streamRunning: data['running'] as bool? ?? false,
+      degradedMode: data['degraded_mode'] as bool? ?? false,
+      streamEngine: data['lipsync_engine'] as String? ?? state.streamEngine,
+      queuePressure: (data['queue_pressure'] as num?)?.toDouble() ?? state.queuePressure,
+      droppedFrames: data['dropped_frames'] as int? ?? state.droppedFrames,
+      avDriftMs: (data['av_drift_ms'] as num?)?.toDouble() ?? state.avDriftMs,
+      obsLiveReady: data['obs_live_ready'] as bool? ?? state.obsLiveReady,
+      streamMessage: data['message'] as String? ?? state.streamMessage,
+    );
   }
 
   void _handleEvent(Map<String, dynamic> event) {
@@ -107,6 +127,33 @@ class AppController extends StateNotifier<AppState> {
         break;
       case 'render_progress':
         state = state.copyWith(renderProgress: data['progress'] as int? ?? 0, previewStatus: data['stage'] as String? ?? 'rendering');
+        break;
+      case 'stream_status':
+        _applyStreamStatus(data);
+        break;
+      case 'stream_started':
+        state = state.copyWith(streamRunning: true, streamMessage: data['message'] as String? ?? 'started');
+        break;
+      case 'stream_stopped':
+        state = state.copyWith(streamRunning: false, streamMessage: data['message'] as String? ?? 'stopped');
+        break;
+      case 'frame_dropped':
+        state = state.copyWith(droppedFrames: data['count'] as int? ?? state.droppedFrames);
+        break;
+      case 'queue_pressure':
+        state = state.copyWith(queuePressure: (data['pressure'] as num?)?.toDouble() ?? state.queuePressure);
+        break;
+      case 'av_sync_status':
+        state = state.copyWith(avDriftMs: (data['drift_ms'] as num?)?.toDouble() ?? state.avDriftMs);
+        break;
+      case 'lipsync_engine_changed':
+        state = state.copyWith(streamEngine: data['engine'] as String? ?? state.streamEngine);
+        break;
+      case 'obs_live_status':
+        state = state.copyWith(
+          obsLiveReady: data['ok'] as bool? ?? false,
+          obsLiveMode: data['mode'] as String? ?? state.obsLiveMode,
+        );
         break;
       case 'render_error':
         state = state.copyWith(previewStatus: 'error', errorMessage: data['message'] as String? ?? 'render error');

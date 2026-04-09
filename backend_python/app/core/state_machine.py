@@ -7,7 +7,7 @@ from app.core.events import PipelineState
 
 class PipelineStateMachine:
     _allowed_transitions: Dict[PipelineState, Set[PipelineState]] = {
-        PipelineState.idle: {PipelineState.listening, PipelineState.camera_ready, PipelineState.error},
+        PipelineState.idle: {PipelineState.listening, PipelineState.camera_ready, PipelineState.stream_initializing, PipelineState.error},
         PipelineState.listening: {PipelineState.transcribing, PipelineState.idle, PipelineState.error},
         PipelineState.transcribing: {PipelineState.thinking, PipelineState.listening, PipelineState.error},
         PipelineState.thinking: {PipelineState.speaking, PipelineState.error},
@@ -16,6 +16,11 @@ class PipelineStateMachine:
         PipelineState.capturing_video: {PipelineState.rendering_preview, PipelineState.error},
         PipelineState.rendering_preview: {PipelineState.preview_ready, PipelineState.error},
         PipelineState.preview_ready: {PipelineState.streaming, PipelineState.idle, PipelineState.error},
+        PipelineState.stream_initializing: {PipelineState.streaming_live, PipelineState.degraded_mode, PipelineState.error},
+        PipelineState.streaming_live: {PipelineState.syncing_av, PipelineState.obs_output_ready, PipelineState.idle, PipelineState.error},
+        PipelineState.syncing_av: {PipelineState.obs_output_ready, PipelineState.streaming_live, PipelineState.degraded_mode, PipelineState.error},
+        PipelineState.obs_output_ready: {PipelineState.streaming_live, PipelineState.degraded_mode, PipelineState.idle, PipelineState.error},
+        PipelineState.degraded_mode: {PipelineState.streaming_live, PipelineState.idle, PipelineState.error},
         PipelineState.lip_syncing: {PipelineState.streaming, PipelineState.error},
         PipelineState.streaming: {PipelineState.listening, PipelineState.idle, PipelineState.error},
         PipelineState.error: {PipelineState.idle},

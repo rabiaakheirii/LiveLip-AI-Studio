@@ -19,6 +19,11 @@ class PipelineState(str, Enum):
     capturing_video = "capturing_video"
     rendering_preview = "rendering_preview"
     preview_ready = "preview_ready"
+    stream_initializing = "stream_initializing"
+    streaming_live = "streaming_live"
+    syncing_av = "syncing_av"
+    obs_output_ready = "obs_output_ready"
+    degraded_mode = "degraded_mode"
     error = "error"
 
 
@@ -36,6 +41,14 @@ class EventType(str, Enum):
     preview_status = "preview_status"
     render_progress = "render_progress"
     render_error = "render_error"
+    stream_status = "stream_status"
+    stream_started = "stream_started"
+    stream_stopped = "stream_stopped"
+    frame_dropped = "frame_dropped"
+    queue_pressure = "queue_pressure"
+    av_sync_status = "av_sync_status"
+    lipsync_engine_changed = "lipsync_engine_changed"
+    obs_live_status = "obs_live_status"
     log = "log"
     error = "error"
 

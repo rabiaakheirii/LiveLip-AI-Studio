@@ -33,6 +33,10 @@ class OBSService:
         self._video_source = video_source
         self._client: ReqClient | None = None
 
+    @property
+    def is_connected(self) -> bool:
+        return self._client is not None
+
     def connect(self) -> OBSStatus:
         try:
             self._client = ReqClient(host=self._host, port=self._port, password=self._password, timeout=3)
@@ -54,10 +58,6 @@ class OBSService:
         return {"audio_source": self._audio_source, "file": str(wav_path)}
 
     def push_preview_video(self, preview_path: Path) -> dict:
-        """Prepare video workflow using Media Source refresh in OBS.
-
-        TODO: Replace with low-latency live video feed (virtual cam / RTMP / NDI).
-        """
         if not self._client:
             raise RuntimeError("OBS is not connected")
         self._client.set_input_settings(
@@ -65,4 +65,25 @@ class OBSService:
             {"local_file": str(preview_path), "is_local_file": True, "looping": False},
             overlay=True,
         )
-        return {"video_source": self._video_source, "file": str(preview_path)}
+        return {"video_source": self._video_source, "file": str(preview_path), "mode": "media_source_refresh"}
+
+    def push_stream_endpoint(self, video_mode: str, stream_url: str, latest_file: Path) -> dict:
+        """Phase 3 live-output abstraction.
+
+        video_mode:
+        - media_source_refresh (works now)
+        - browser_source_url (works if source type supports URL)
+        """
+        if not self._client:
+            return {"ok": False, "connected": False, "mode": video_mode}
+
+        if video_mode == "browser_source_url":
+            self._client.set_input_settings(self._video_source, {"url": stream_url}, overlay=True)
+            return {"ok": True, "connected": True, "mode": video_mode, "stream_url": stream_url}
+
+        self._client.set_input_settings(
+            self._video_source,
+            {"local_file": str(latest_file), "is_local_file": True, "looping": False},
+            overlay=True,
+        )
+        return {"ok": True, "connected": True, "mode": "media_source_refresh", "file": str(latest_file)}

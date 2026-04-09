@@ -1,53 +1,62 @@
 from __future__ import annotations
 
-import subprocess
-import uuid
-from datetime import datetime
+import logging
 from pathlib import Path
 
+from app.core.frame_queue import FramePacket
 from app.models.webcam import PreviewChunk
+from app.services.lipsync_engines.base import BaseLipSyncEngine, EngineFrameResult
+from app.services.lipsync_engines.ffmpeg_engine import FFmpegLipSyncEngine
+from app.services.lipsync_engines.liveportrait_engine import LivePortraitEngine
+from app.services.lipsync_engines.mock_engine import MockLipSyncEngine
+from app.services.lipsync_engines.musetalk_engine import MuseTalkEngine
+from app.services.lipsync_engines.wav2lip_engine import Wav2LipEngine
+
+logger = logging.getLogger(__name__)
 
 
 class LipSyncService:
-    """Chunk-based preview renderer.
-
-    MVP: Uses FFmpeg to combine captured frame + TTS audio into an MP4 chunk.
-    TODO: Replace with Wav2Lip / MuseTalk / LivePortrait pipeline.
-    """
-
-    def __init__(self, preview_dir: Path):
+    def __init__(self, preview_dir: Path, engine_name: str = "ffmpeg", experimental_enabled: bool = False) -> None:
         self._preview_dir = preview_dir
+        self._engine_name = engine_name
+        self._experimental_enabled = experimental_enabled
+        self._engine: BaseLipSyncEngine = self._build_engine(engine_name)
+        self.degraded_mode = False
+
+    @property
+    def engine_name(self) -> str:
+        return self._engine.name
+
+    def _build_engine(self, engine_name: str) -> BaseLipSyncEngine:
+        try:
+            if engine_name == "ffmpeg":
+                return FFmpegLipSyncEngine()
+            if engine_name == "wav2lip":
+                return Wav2LipEngine(enabled=self._experimental_enabled)
+            if engine_name == "musetalk":
+                return MuseTalkEngine(enabled=self._experimental_enabled)
+            if engine_name == "liveportrait":
+                return LivePortraitEngine(enabled=self._experimental_enabled)
+            return MockLipSyncEngine()
+        except Exception:
+            logger.exception("Failed to initialize lipsync engine=%s; using mock", engine_name)
+            self.degraded_mode = True
+            return MockLipSyncEngine()
+
+    async def process_frame(self, frame: FramePacket, audio_bytes: bytes | None = None) -> EngineFrameResult:
+        try:
+            return await self._engine.process_frame(frame, audio_bytes)
+        except Exception as exc:
+            logger.warning("process_frame failed in %s: %s; falling back to mock", self._engine.name, exc)
+            self.degraded_mode = True
+            fallback = MockLipSyncEngine()
+            return await fallback.process_frame(frame, audio_bytes)
 
     async def render_chunk(self, audio_path: Path, frame_path: Path, source: str = "webcam") -> PreviewChunk:
-        chunk_id = uuid.uuid4().hex[:10]
-        file_name = f"preview_{chunk_id}.mp4"
-        output_path = self._preview_dir / file_name
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-loop",
-            "1",
-            "-i",
-            str(frame_path),
-            "-i",
-            str(audio_path),
-            "-shortest",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            str(output_path),
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
-
-        return PreviewChunk(
-            chunk_id=chunk_id,
-            file_name=file_name,
-            file_path=str(output_path),
-            preview_url=f"/preview/{file_name}",
-            created_at=datetime.utcnow(),
-            source=source,
-        )
+        try:
+            return await self._engine.render_chunk(audio_path, frame_path, self._preview_dir, source=source)
+        except Exception as exc:
+            logger.warning("render_chunk failed in %s: %s; falling back to mock", self._engine.name, exc)
+            self.degraded_mode = True
+            fallback = MockLipSyncEngine()
+            return await fallback.render_chunk(audio_path, frame_path, self._preview_dir, source=source)

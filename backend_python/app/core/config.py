@@ -24,8 +24,17 @@ class Settings(BaseSettings):
     obs_scene: str = Field(default="Scene")
     obs_audio_source: str = Field(default="LiveLipSyncAudio")
     obs_video_source: str = Field(default="LiveLipSyncVideo")
+    obs_video_mode: str = Field(default="media_source_refresh")
 
     webcam_max_devices: int = Field(default=3)
+
+    lipsync_engine: str = Field(default="ffmpeg")
+    enable_experimental_engines: bool = Field(default=False)
+
+    stream_target_fps: int = Field(default=10)
+    stream_frame_queue_size: int = Field(default=12)
+    stream_audio_queue_size: int = Field(default=12)
+    stream_preview_mode: str = Field(default="mjpeg")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

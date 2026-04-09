@@ -7,10 +7,14 @@ import 'package:flutter_live_lipsync_assistant/screens/transcript_screen.dart';
 import 'package:flutter_live_lipsync_assistant/state/app_controller.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/camera_selector.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/control_bar.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/obs_live_status_card.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/obs_status_card.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/preview_panel.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/preview_status_card.dart';
 import 'package:flutter_live_lipsync_assistant/widgets/status_badge.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/stream_control_bar.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/stream_metrics_panel.dart';
+import 'package:flutter_live_lipsync_assistant/widgets/stream_status_card.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -42,7 +46,29 @@ class DashboardScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               child: ListView(
                 children: [
+                  if (state.degradedMode)
+                    const Card(
+                      color: Colors.orange,
+                      child: ListTile(title: Text('Degraded mode enabled'), subtitle: Text('Backend is using fallback engine/mode.')),
+                    ),
                   ControlBar(onStart: controller.start, onStop: controller.stop),
+                  const SizedBox(height: 8),
+                  StreamControlBar(onStart: controller.startStream, onStop: controller.stopStream),
+                  const SizedBox(height: 16),
+                  StreamStatusCard(
+                    running: state.streamRunning,
+                    engine: state.streamEngine,
+                    degraded: state.degradedMode,
+                    message: state.streamMessage,
+                  ),
+                  const SizedBox(height: 8),
+                  StreamMetricsPanel(
+                    queuePressure: state.queuePressure,
+                    droppedFrames: state.droppedFrames,
+                    avDriftMs: state.avDriftMs,
+                  ),
+                  const SizedBox(height: 8),
+                  OBSLiveStatusCard(ready: state.obsLiveReady, mode: state.obsLiveMode),
                   const SizedBox(height: 16),
                   OBSStatusCard(connected: state.obsConnected, scenes: state.obsScenes),
                   const SizedBox(height: 16),
@@ -56,8 +82,8 @@ class DashboardScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   const Card(
                     child: ListTile(
-                      title: Text('Webcam Preview Placeholder'),
-                      subtitle: Text('Phase 2 renders chunk URLs. Embed player widget in Phase 3.'),
+                      title: Text('Live Stream Preview Endpoint'),
+                      subtitle: Text('Use backend MJPEG: /api/stream/mjpeg, latest frame: /api/stream/latest-frame'),
                     ),
                   ),
                   const SizedBox(height: 16),

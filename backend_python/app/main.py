@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes_pipeline import router as pipeline_router
 from app.api.routes_preview import router as preview_router
 from app.api.routes_settings import router as settings_router
+from app.api.routes_stream import router as stream_router
 from app.api.routes_webcam import router as webcam_router
 from app.core.config import get_settings
 from app.core.orchestrator import EventBus, PipelineOrchestrator
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(preview_router)
     app.include_router(webcam_router)
+    app.include_router(stream_router)
     app.mount("/preview", StaticFiles(directory=orchestrator.preview_dir), name="preview")
 
     @app.get("/health")
@@ -45,6 +47,7 @@ def create_app() -> FastAPI:
     async def ws_events(websocket: WebSocket):
         await event_bus.connect(websocket)
         await orchestrator.publish_camera_list()
+        await orchestrator._emit_by_name("stream_status", orchestrator.stream_status().model_dump(mode="json"))
         try:
             while True:
                 await websocket.receive_text()

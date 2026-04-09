@@ -20,19 +20,20 @@
         "preview_status",
         "render_progress",
         "render_error",
+        "stream_status",
+        "stream_started",
+        "stream_stopped",
+        "frame_dropped",
+        "queue_pressure",
+        "av_sync_status",
+        "lipsync_engine_changed",
+        "obs_live_status",
         "log",
         "error"
       ]
     },
-    "timestamp": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "trace_id": {
-      "type": ["string", "null"]
-    },
-    "data": {
-      "type": "object"
-    }
+    "timestamp": {"type": "string", "format": "date-time"},
+    "trace_id": {"type": ["string", "null"]},
+    "data": {"type": "object"}
   }
 }

@@ -10,6 +10,11 @@ enum PipelineStatus {
   capturingVideo,
   renderingPreview,
   previewReady,
+  streamInitializing,
+  streamingLive,
+  syncingAv,
+  obsOutputReady,
+  degradedMode,
   error,
 }
 
@@ -37,6 +42,16 @@ PipelineStatus pipelineStatusFromString(String value) {
       return PipelineStatus.renderingPreview;
     case 'preview_ready':
       return PipelineStatus.previewReady;
+    case 'stream_initializing':
+      return PipelineStatus.streamInitializing;
+    case 'streaming_live':
+      return PipelineStatus.streamingLive;
+    case 'syncing_av':
+      return PipelineStatus.syncingAv;
+    case 'obs_output_ready':
+      return PipelineStatus.obsOutputReady;
+    case 'degraded_mode':
+      return PipelineStatus.degradedMode;
     default:
       return PipelineStatus.error;
   }

@@ -21,6 +21,16 @@ class AppState {
   final int renderProgress;
   final String previewStatus;
 
+  final bool streamRunning;
+  final bool degradedMode;
+  final String streamEngine;
+  final double queuePressure;
+  final int droppedFrames;
+  final double avDriftMs;
+  final bool obsLiveReady;
+  final String obsLiveMode;
+  final String streamMessage;
+
   const AppState({
     required this.status,
     required this.partialTranscript,
@@ -37,6 +47,15 @@ class AppState {
     required this.previewHistory,
     required this.renderProgress,
     required this.previewStatus,
+    required this.streamRunning,
+    required this.degradedMode,
+    required this.streamEngine,
+    required this.queuePressure,
+    required this.droppedFrames,
+    required this.avDriftMs,
+    required this.obsLiveReady,
+    required this.obsLiveMode,
+    required this.streamMessage,
     this.errorMessage,
   });
 
@@ -56,6 +75,15 @@ class AppState {
         previewHistory: [],
         renderProgress: 0,
         previewStatus: 'idle',
+        streamRunning: false,
+        degradedMode: false,
+        streamEngine: 'ffmpeg',
+        queuePressure: 0,
+        droppedFrames: 0,
+        avDriftMs: 0,
+        obsLiveReady: false,
+        obsLiveMode: 'media_source_refresh',
+        streamMessage: 'idle',
       );
 
   AppState copyWith({
@@ -74,6 +102,15 @@ class AppState {
     List<PreviewChunk>? previewHistory,
     int? renderProgress,
     String? previewStatus,
+    bool? streamRunning,
+    bool? degradedMode,
+    String? streamEngine,
+    double? queuePressure,
+    int? droppedFrames,
+    double? avDriftMs,
+    bool? obsLiveReady,
+    String? obsLiveMode,
+    String? streamMessage,
     String? errorMessage,
   }) {
     return AppState(
@@ -92,6 +129,15 @@ class AppState {
       previewHistory: previewHistory ?? this.previewHistory,
       renderProgress: renderProgress ?? this.renderProgress,
       previewStatus: previewStatus ?? this.previewStatus,
+      streamRunning: streamRunning ?? this.streamRunning,
+      degradedMode: degradedMode ?? this.degradedMode,
+      streamEngine: streamEngine ?? this.streamEngine,
+      queuePressure: queuePressure ?? this.queuePressure,
+      droppedFrames: droppedFrames ?? this.droppedFrames,
+      avDriftMs: avDriftMs ?? this.avDriftMs,
+      obsLiveReady: obsLiveReady ?? this.obsLiveReady,
+      obsLiveMode: obsLiveMode ?? this.obsLiveMode,
+      streamMessage: streamMessage ?? this.streamMessage,
       errorMessage: errorMessage,
     );
   }

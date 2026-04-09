@@ -1,26 +1,31 @@
-# Architecture Notes (Phase 1 + Phase 2)
+# Architecture (Phase 3)
 
-## Core principle
-Flutter is only the desktop control plane and UI. Heavy operations remain in Python services.
+## Backend stream pipeline
+- `StreamPipeline` manages continuous worker loops:
+  - capture loop
+  - audio ingestion loop
+  - lipsync inference loop
+  - publisher loop
+- Uses bounded async queues (`FrameQueue`, `AudioQueue`) with frame-drop/backpressure behavior.
+- Tracks sync drift via `AVSyncEstimator` and exposes `StreamMetrics`.
 
-## Backend additions in Phase 2
-- `WebcamService`: camera discovery/selection and snapshot capture abstraction.
-- `LipSyncService`: FFmpeg-based chunk renderer shell for preview MP4 generation.
-- `RenderQueueService`: bounded in-memory history for preview metadata.
-- `StoragePaths`: centralized runtime directories (`audio/`, `frames/`, `preview/`, `cache/`).
+## LipSync engine adapters
+`LipSyncService` selects engine by config:
+- `mock`
+- `ffmpeg`
+- `wav2lip` (guarded)
+- `musetalk` (guarded)
+- `liveportrait` (guarded)
 
-## Pipeline extension
-Phase 1 states are preserved and extended with:
-- `camera_ready`
-- `capturing_video`
-- `rendering_preview`
-- `preview_ready`
+On engine failure, service enters degraded mode and falls back to mock engine.
 
-## Preview transport
-- Metadata endpoints: `/api/preview/latest`, `/api/preview/history`
-- Static media endpoint: `/preview/<file>`
-- WS event: `preview_chunk_ready`
+## Preview/stream delivery
+- Backward-compatible chunk preview endpoints remain.
+- Stream mode adds:
+  - latest frame endpoint
+  - MJPEG endpoint
+  - stream status/start/stop APIs
 
-## Future replacement points
-- Swap `LipSyncService.render_chunk` with Wav2Lip/MuseTalk/LivePortrait worker.
-- Replace OBS file-source updates with low-latency live ingest.
+## OBS output
+- `media_source_refresh` mode (works now): refreshes OBS media source with latest frame file.
+- `browser_source_url` mode (works when source supports URL): points OBS to local stream endpoint.
